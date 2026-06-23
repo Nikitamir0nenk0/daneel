@@ -1,0 +1,9 @@
+# clients/chitai-gorod/context.yml
+
+slug: "chitai-gorod"
+name: "Читай-город"
+sector: "retail / e-commerce"
+country: "Russia"
+language: "russian"
+first_work: "2026-06-23"
+work_types_used: []
