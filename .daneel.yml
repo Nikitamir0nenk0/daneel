@@ -1,0 +1,10 @@
+# .daneel.yml
+# User profile for the Daneel framework.
+# Read-only for the AI — edit manually to update.
+
+profile:
+  name: Nikita Mironenko
+  role: ML Engineer
+  timezone: Europe/Moscow
+  language: russian
+
