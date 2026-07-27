@@ -1,0 +1,36 @@
+# playbooks/other_airflow_showcase_pipeline.yml
+# Schema: frameworks/daneel/templates/playbook_root.yml (#274)
+# Promoted from: clients/chitai-gorod/playbooks/other_airflow_showcase_pipeline.yml
+
+name: "Airflow rolling-window pipeline for ClickHouse showcase table"
+work_type: "other"
+created: "2026-07-27"
+promoted_from: "clients/chitai-gorod/playbooks/other_airflow_showcase_pipeline.yml"
+usage_count: 0
+source_clients:
+  - "chitai-gorod"
+
+context:
+  problem: >
+    Need a scheduled Airflow pipeline that keeps a ClickHouse showcase/vitrina
+    table up to date, joining two or more raw sources (e.g. stock and sales)
+    at a fixed grain (e.g. day x entity x item), filtered to a client-specific
+    subset of entities and categories.
+
+steps:
+  - "Define a shared SQL module (`*_sql.py`) exposing `TABLE_NAME`, a connection-id constant, and a `build_insert_sql_window(window_start, window_end)` function returning the full INSERT ... SELECT query. Load the client-specific filters (eligible entities, category/rubric rules) from `clients/{slug}/context.yml` rather than hardcoding them."
+  - "Define a loader module (`*_loader.py`) with `run_window_load(window_start, window_end)`: open the DB client via the shared connection wrapper, log the pre-window row count, delete the window (with sync/wait-for-mutation settings if the engine needs it), assert the post-delete count is 0 (fail otherwise), run the insert from step 1, assert the post-insert count is > 0 (fail otherwise)."
+  - "Define the daily DAG: fixed `start_date` (never a relative 'days ago'), a nightly schedule, `catchup=False`, `max_active_runs=1`, a failure-alert callback, and a single task that computes a rolling window `[today - N days, today - 1]` and calls `run_window_load`."
+  - "If a downstream DAG consumes this table, chain a trigger-dag-run task after the load task, without waiting for its completion."
+  - "Tag the DAG with team/domain/cadence tags for discoverability."
+  - "Trigger the DAG manually once before enabling the schedule, and confirm row counts in the task logs."
+
+notes: >
+  A rolling delete+insert window (e.g. 7 days) is simpler to build than a
+  strict "load yesterday only, fail if it already exists" design, and is
+  more forgiving of late-arriving source data — but it silently masks gaps
+  older than the window. If the use case needs a full audit trail or exact
+  once-only loads, add a manual-only init DAG that checks the target table
+  is empty, backfills full history, and verifies rows were inserted; this
+  was scoped but not built in the first implementation (source: chitai-gorod,
+  issue #18).

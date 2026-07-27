@@ -1,0 +1,44 @@
+# clients/chitai-gorod/playbooks/other_airflow_showcase_pipeline.yml
+# Schema: frameworks/daneel/templates/playbook_client.yml (#274)
+
+name: "Airflow rolling-window pipeline for ClickHouse showcase table"
+client: "chitai-gorod"
+contact: null
+work_type: "other"
+created: "2026-07-27"
+issue_ref: 18
+usage_count: 1
+promoted_to_root: true
+
+context:
+  problem: >
+    Need a scheduled Airflow pipeline that keeps a ClickHouse showcase/vitrina
+    table (day x shop x book grain) up to date, joining stock and sales data
+    filtered to a specific set of shops, catalog categories and rubrics for
+    Chitai-Gorod / Bukvoed stores in Moscow.
+  outcome: >
+    Shipped as a first version: a single daily DAG that re-processes a rolling
+    7-day window (delete + insert) instead of the originally-scoped
+    init-DAG + strict "yesterday only" daily DAG. No init/backfill DAG exists
+    yet — the target table must already exist and be backfilled manually
+    before the daily DAG is enabled. Deviates from the original issue spec in
+    two ways: (1) no 1-year backfill DAG, (2) daily DAG overwrites a 7-day
+    window instead of failing if yesterday already has data. Known first-version
+    gap, expected to be corrected in a follow-up iteration.
+
+steps:
+  - "Define a shared SQL module (`*_sql.py`) exposing `TABLE_NAME`, `CLICKHOUSE_CONN_ID`, and a `build_insert_sql_window(window_start, window_end)` function that returns the full INSERT ... SELECT query, with all client-specific filters (eligible shops, catalog rubric exclusions, eligible categories) inlined as CTEs."
+  - "Define a loader module (`*_loader.py`) with `run_window_load(window_start, window_end)`: open the ClickHouse client via the shared connection wrapper (`ch_s53` / conn_id from step 1), log the pre-window row count, `ALTER TABLE ... DELETE` the window with `mutations_sync=1`, assert the post-delete count is 0 (raise `AirflowFailException` otherwise), run the insert from step 1, assert the post-insert count is > 0 (raise otherwise)."
+  - "Define the daily DAG (`dag_n_<name>_daily.py`): fixed `start_date` (never `days_ago`), a nightly `schedule_interval`, `catchup=False`, `max_active_runs=1`, an `on_failure_callback` to the team's alert channel, and a single `@task` that computes the rolling window `[today - N days, today - 1]` and calls `run_window_load`."
+  - "If a downstream DAG consumes this table (e.g. a forecast pipeline), chain a `TriggerDagRunOperator(wait_for_completion=False, reset_dag_run=True)` after the load task."
+  - "Tag the DAG with team/domain/cadence tags (e.g. `clickhouse`, `showcase`, `<domain>`, `daily`, `<team>`) for discoverability."
+  - "Before enabling the schedule, trigger the DAG manually once and confirm row counts in the task logs; only then let it run on schedule."
+
+notes: >
+  Follow-up needed: add a manual-only init DAG that (a) checks the target
+  table is empty, (b) backfills the full history, (c) verifies rows were
+  inserted — this was in the original issue scope (#18) but not built in
+  v1. Also reconsider the delete+insert rolling-window approach vs. the
+  original "fail if yesterday already exists" design — the rolling window
+  is more forgiving of late-arriving source data but silently masks gaps
+  older than the window.

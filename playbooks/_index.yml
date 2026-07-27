@@ -1,0 +1,9 @@
+# playbooks/_index.yml
+# Schema: frameworks/daneel/templates/playbook_index.yml (#274)
+
+playbooks:
+  - file: "other_airflow_showcase_pipeline.yml"
+    work_type: "other"
+    name: "Airflow rolling-window pipeline for ClickHouse showcase table"
+    created: "2026-07-27"
+    usage_count: 0
